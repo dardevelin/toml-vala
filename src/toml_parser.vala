@@ -571,19 +571,6 @@ public class TomlParser {
         var val = parse_value();
         set_nested_value(table, keys, val);
     }
-}
-
-public class TomlWatcher {
-    private File file;
-    private FileMonitor monitor;
-    private bool watching;
-
-    public signal void changed(TomlValue root);
-
-    public TomlWatcher(string filename) {
-        file = File.new_for_path(filename);
-        watching = false;
-    }
 
     private static string read_file_content(string filename, string? encoding) throws TomlError {
         try {
@@ -650,41 +637,18 @@ public class TomlWatcher {
             throw new TomlError.INVALID_SYNTAX("Failed to read file: " + e.message);
         }
     }
+}
 
-    public class TomlValidationError {
-        public string message { get; private set; }
-        public int line { get; private set; }
-        public int col { get; private set; }
-        public string suggestion { get; private set; }
+public class TomlWatcher {
+    private File file;
+    private FileMonitor monitor;
+    private bool watching;
 
-        public TomlValidationError(string msg, int l, int c, string sugg) {
-            message = msg;
-            line = l;
-            col = c;
-            suggestion = sugg;
-        }
-    }
+    public signal void changed(TomlValue root);
 
-    public class TomlValidator {
-        public static Gee.ArrayList<TomlValidationError> validate_file(string filename, string? encoding = null) {
-            var errors = new Gee.ArrayList<TomlValidationError>();
-            try {
-                TomlParser.parse_file(filename, encoding);
-            } catch (TomlError e) {
-                string suggestion = "";
-                if (e is TomlError.INVALID_SYNTAX) {
-                    suggestion = "Check the TOML syntax at the indicated position. Ensure keys are properly quoted if necessary, and values match expected types.";
-                } else if (e is TomlError.INVALID_VALUE) {
-                    suggestion = "Verify the value format. For example, strings should be quoted, numbers should not contain invalid characters.";
-                } else if (e is TomlError.DUPLICATE_KEY) {
-                    suggestion = "Remove or rename duplicate keys in the same table.";
-                } else if (e is TomlError.MISSING_KEY) {
-                    suggestion = "Ensure all required keys are present.";
-                }
-                errors.add(new TomlValidationError(e.message, 0, 0, suggestion)); // Line and col not available in current parser
-            }
-            return errors;
-        }
+    public TomlWatcher(string filename) {
+        file = File.new_for_path(filename);
+        watching = false;
     }
 
     public void start() throws IOError {
@@ -709,5 +673,41 @@ public class TomlWatcher {
                 // Ignore parse errors on change
             }
         }
+    }
+}
+
+public class TomlValidationError {
+    public string message { get; private set; }
+    public int line { get; private set; }
+    public int col { get; private set; }
+    public string suggestion { get; private set; }
+
+    public TomlValidationError(string msg, int l, int c, string sugg) {
+        message = msg;
+        line = l;
+        col = c;
+        suggestion = sugg;
+    }
+}
+
+public class TomlValidator {
+    public static Gee.ArrayList<TomlValidationError> validate_file(string filename, string? encoding = null) {
+        var errors = new Gee.ArrayList<TomlValidationError>();
+        try {
+            TomlParser.parse_file(filename, encoding);
+        } catch (TomlError e) {
+            string suggestion = "";
+            if (e is TomlError.INVALID_SYNTAX) {
+                suggestion = "Check the TOML syntax at the indicated position. Ensure keys are properly quoted if necessary, and values match expected types.";
+            } else if (e is TomlError.INVALID_VALUE) {
+                suggestion = "Verify the value format. For example, strings should be quoted, numbers should not contain invalid characters.";
+            } else if (e is TomlError.DUPLICATE_KEY) {
+                suggestion = "Remove or rename duplicate keys in the same table.";
+            } else if (e is TomlError.MISSING_KEY) {
+                suggestion = "Ensure all required keys are present.";
+            }
+            errors.add(new TomlValidationError(e.message, 0, 0, suggestion)); // Line and col not available in current parser
+        }
+        return errors;
     }
 }
