@@ -47,8 +47,20 @@ public class TomlValue {
 public class TomlParser {
 	public TomlParser (string toml);
 	public TomlValue parse () throws TomlError;
-	public static TomlValue parse_file (string filename) throws TomlError;
-	public static async TomlValue parse_file_async (string filename) throws TomlError;
+	public static TomlValue parse_file (string filename, string? encoding = null) throws TomlError;
+	public static async TomlValue parse_file_async (string filename, string? encoding = null) throws TomlError;
+}
+[CCode (cheader_filename = "toml-vala.h")]
+public class TomlValidationError {
+	public TomlValidationError (string msg, int l, int c, string sugg);
+	public string message { get; private set; }
+	public int line { get; private set; }
+	public int col { get; private set; }
+	public string suggestion { get; private set; }
+}
+[CCode (cheader_filename = "toml-vala.h")]
+public class TomlValidator {
+	public static Gee.ArrayList<TomlValidationError> validate_file (string filename, string? encoding = null);
 }
 [CCode (cheader_filename = "toml-vala.h")]
 public class TomlWatcher {

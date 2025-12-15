@@ -10,7 +10,8 @@ A pure-Vala implementation of a TOML v1.0.0 parser, designed to be lightweight, 
 - **Asynchronous Parsing**: Includes async file parsing APIs using GLib/GIO.
 - **File Watching**: Provides a `TomlWatcher` class for hot-reloading on file changes.
 - **Error Handling**: Comprehensive error reporting with `TomlError` domain.
-- **UTF-8 Support**: Handles Unicode in strings, keys, and comments.
+- **Multi-Encoding Support**: Reads TOML files in ASCII, UTF-8, UTF-16, and UTF-32 encodings with automatic BOM detection.
+- **Validation**: Optional validation tool that checks TOML files against the specification, reports errors, and suggests fixes (not linked by default).
 - **Dependencies**: Only requires GLib, Gee, and json-glib (for JSON serialization).
 
 ## Installation
@@ -53,7 +54,11 @@ using Gee;
 
 public static int main(string[] args) {
     try {
+        // Parse with automatic encoding detection
         var root = TomlParser.parse_file("config.toml");
+        
+        // Or specify encoding explicitly
+        // var root = TomlParser.parse_file("config.toml", "UTF-16");
         
         // Access values
         var title = root.get("title").string_val;
@@ -81,7 +86,8 @@ using GLib;
 
 public static async void parse_async() {
     try {
-        var root = yield TomlParser.parse_file_async("config.toml");
+        // Async parsing with encoding support
+        var root = yield TomlParser.parse_file_async("config.toml", "UTF-8");
         // Use root as above
     } catch (TomlError e) {
         stderr.printf("Error: %s\n", e.message);
@@ -133,6 +139,26 @@ public static int main() {
 }
 ```
 
+### Validation
+
+```vala
+using Gee;
+
+public static int main(string[] args) {
+    // Validate TOML file (optional feature, not linked by default)
+    var errors = TomlValidator.validate_file("config.toml");
+    if (errors.size > 0) {
+        foreach (var error in errors) {
+            print("Error at line %d, col %d: %s\n", error.line, error.col, error.message);
+            print("Suggestion: %s\n", error.suggestion);
+        }
+        return 1;
+    }
+    print("TOML file is valid.\n");
+    return 0;
+}
+```
+
 ## API Reference
 
 ### TomlValue
@@ -154,8 +180,19 @@ Methods:
 ### TomlParser
 
 Static methods:
-- `TomlValue parse_file(string filename) throws TomlError`: Parse a TOML file synchronously.
-- `async TomlValue parse_file_async(string filename) throws TomlError`: Parse a TOML file asynchronously.
+- `TomlValue parse_file(string filename, string? encoding = null) throws TomlError`: Parse a TOML file synchronously. Encoding defaults to auto-detection.
+- `async TomlValue parse_file_async(string filename, string? encoding = null) throws TomlError`: Parse a TOML file asynchronously. Encoding defaults to auto-detection.
+
+### TomlValidator
+
+- `Gee.ArrayList<TomlValidationError> validate_file(string filename, string? encoding = null)`: Validate a TOML file and return a list of errors with suggestions.
+
+### TomlValidationError
+
+- `string message`: Error message.
+- `int line`: Line number (0 if not available).
+- `int col`: Column number (0 if not available).
+- `string suggestion`: Suggested fix.
 
 ### TomlWatcher
 
@@ -174,6 +211,7 @@ Error domain with codes: INVALID_SYNTAX, INVALID_VALUE, DUPLICATE_KEY, MISSING_K
 - Unicode escape sequences (\u/\U) are not fully decoded; basic handling is implemented.
 - The `to_toml()` serializer is simple and may not preserve all formatting/comments.
 - No support for binary data or extensions beyond TOML v1.0.0.
+- Validation currently reports only the first error encountered; full multi-error validation may be improved in future versions.
 
 ## Contributing
 

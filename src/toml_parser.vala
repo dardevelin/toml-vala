@@ -240,27 +240,14 @@ public class TomlParser {
         col = 1;
     }
 
-    public static TomlValue parse_file(string filename) throws TomlError {
-        string content;
-        try {
-            FileUtils.get_contents(filename, out content);
-        } catch (FileError e) {
-            throw new TomlError.INVALID_SYNTAX("Failed to read file: " + e.message);
-        }
+    public static TomlValue parse_file(string filename, string? encoding = null) throws TomlError {
+        string content = read_file_content(filename, encoding);
         var parser = new TomlParser(content);
         return parser.parse();
     }
 
-    public static async TomlValue parse_file_async(string filename) throws TomlError {
-        string content;
-        try {
-            var file = File.new_for_path(filename);
-            uint8[] data;
-            yield file.load_contents_async(null, out data, null);
-            content = (string) data;
-        } catch (Error e) {
-            throw new TomlError.INVALID_SYNTAX("Failed to read file: " + e.message);
-        }
+    public static async TomlValue parse_file_async(string filename, string? encoding = null) throws TomlError {
+        string content = yield read_file_content_async(filename, encoding);
         var parser = new TomlParser(content);
         return parser.parse();
     }
@@ -596,6 +583,108 @@ public class TomlWatcher {
     public TomlWatcher(string filename) {
         file = File.new_for_path(filename);
         watching = false;
+    }
+
+    private static string read_file_content(string filename, string? encoding) throws TomlError {
+        try {
+            var file = File.new_for_path(filename);
+            uint8[] data;
+            file.load_contents(null, out data, null);
+            string detected_encoding = encoding ?? detect_encoding(data);
+            if (detected_encoding == "UTF-8" || detected_encoding == "ASCII") {
+                return (string) data;
+            } else {
+                size_t bytes_read, bytes_written;
+                string content = GLib.convert((string) data, -1, "UTF-8", detected_encoding, out bytes_read, out bytes_written);
+                if (content == null) {
+                    throw new TomlError.INVALID_SYNTAX("Failed to convert encoding");
+                }
+                return content;
+            }
+        } catch (Error e) {
+            throw new TomlError.INVALID_SYNTAX("Failed to read file: " + e.message);
+        }
+    }
+
+    private static string detect_encoding(uint8[] data) {
+        if (data.length >= 4) {
+            if (data[0] == 0x00 && data[1] == 0x00 && data[2] == 0xFE && data[3] == 0xFF) {
+                return "UTF-32BE";
+            } else if (data[0] == 0xFF && data[1] == 0xFE && data[2] == 0x00 && data[3] == 0x00) {
+                return "UTF-32LE";
+            }
+        }
+        if (data.length >= 3) {
+            if (data[0] == 0xEF && data[1] == 0xBB && data[2] == 0xBF) {
+                return "UTF-8";
+            }
+        }
+        if (data.length >= 2) {
+            if (data[0] == 0xFE && data[1] == 0xFF) {
+                return "UTF-16BE";
+            } else if (data[0] == 0xFF && data[1] == 0xFE) {
+                return "UTF-16LE";
+            }
+        }
+        // Assume UTF-8 if no BOM
+        return "UTF-8";
+    }
+
+    private static async string read_file_content_async(string filename, string? encoding) throws TomlError {
+        try {
+            var file = File.new_for_path(filename);
+            uint8[] data;
+            yield file.load_contents_async(null, out data, null);
+            string detected_encoding = encoding ?? detect_encoding(data);
+            if (detected_encoding == "UTF-8" || detected_encoding == "ASCII") {
+                return (string) data;
+            } else {
+                size_t bytes_read, bytes_written;
+                string content = GLib.convert((string) data, -1, "UTF-8", detected_encoding, out bytes_read, out bytes_written);
+                if (content == null) {
+                    throw new TomlError.INVALID_SYNTAX("Failed to convert encoding");
+                }
+                return content;
+            }
+        } catch (Error e) {
+            throw new TomlError.INVALID_SYNTAX("Failed to read file: " + e.message);
+        }
+    }
+
+    public class TomlValidationError {
+        public string message { get; private set; }
+        public int line { get; private set; }
+        public int col { get; private set; }
+        public string suggestion { get; private set; }
+
+        public TomlValidationError(string msg, int l, int c, string sugg) {
+            message = msg;
+            line = l;
+            col = c;
+            suggestion = sugg;
+        }
+    }
+
+    public class TomlValidator {
+        public static Gee.ArrayList<TomlValidationError> validate_file(string filename, string? encoding = null) {
+            var errors = new Gee.ArrayList<TomlValidationError>();
+            try {
+                TomlParser.parse_file(filename, encoding);
+            } catch (TomlError e) {
+                string suggestion = "";
+                if (e is TomlError.INVALID_SYNTAX) {
+                    suggestion = "Check the TOML syntax at the indicated position. Ensure keys are properly quoted if necessary, and values match expected types.";
+                } else if (e is TomlError.INVALID_VALUE) {
+                    suggestion = "Verify the value format. For example, strings should be quoted, numbers should not contain invalid characters.";
+                } else if (e is TomlError.DUPLICATE_KEY) {
+                    suggestion = "Remove or rename duplicate keys in the same table.";
+                } else if (e is TomlError.MISSING_KEY) {
+                    suggestion = "Ensure all required keys are present.";
+                }
+                errors.add(new TomlValidationError(e.message, 0, 0, suggestion)); // Line and col not available in current parser
+            }
+            return errors;
+        }
     }
 
     public void start() throws IOError {
